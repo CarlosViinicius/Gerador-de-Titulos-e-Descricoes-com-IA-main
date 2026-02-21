@@ -1,0 +1,27 @@
+body {
+  @apply text-gray-900 antialiased;
+}
+
+/* Fundo da página: gradiente suave + leve textura */
+.page-bg {
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(99, 102, 241, 0.05), transparent),
+    radial-gradient(ellipse 50% 30% at 0% 80%, rgba(139, 92, 246, 0.04), transparent);
+  min-height: 100vh;
+}
+
+/* Inputs com transição suave */
+.input-login:focus,
+.input-main:focus {
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+/* Limite de linhas no resultado */
+.line-clamp-5 {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
