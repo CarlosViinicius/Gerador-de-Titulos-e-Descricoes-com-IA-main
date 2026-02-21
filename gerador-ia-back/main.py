@@ -56,7 +56,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
 # Configuração do SQLite
-SQLALCHEMY_DATABASE_URL = "sqlite:///./db.sqlite3"
+SQLALCHEMY_DATABASE_URL = "sqlite:////tmp/db.sqlite3"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
