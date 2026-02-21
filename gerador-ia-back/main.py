@@ -1,18 +1,21 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
 from pathlib import Path
+from sqlalchemy import Column, Integer, String, Text, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
 
-# Carrega variáveis do arquivo .env
+# 1. Configurações Iniciais e Variáveis de Ambiente
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 app = FastAPI()
 
-# Configura o CORS para permitir o frontend React
+# Configuração do CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,41 +24,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Modelo de dados esperado do frontend
-class Produto(BaseModel):
-    categoria: str
-    beneficios: str
-    material: str
-
-# IA: prioridade = Groq (grátis nuvem) > OpenAI (pago) > Ollama (grátis local)
+# 2. Configuração de IA (Groq / OpenAI / Ollama)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 API_KEY = os.getenv("API_KEY")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
 
 if GROQ_API_KEY:
-    # Groq (grátis na nuvem) – chave em https://console.groq.com
     client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
     AI_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
     AI_PROVIDER = "Groq"
 elif API_KEY:
-    # OpenAI (pago)
     client = OpenAI(api_key=API_KEY)
     AI_MODEL = "gpt-3.5-turbo"
     AI_PROVIDER = "OpenAI"
 else:
-    # Ollama (grátis, local) – instale em https://ollama.com e rode: ollama pull llama3.2
-    client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+    client = OpenAI(api_url=OLLAMA_BASE_URL, api_key="ollama")
     AI_MODEL = OLLAMA_MODEL
     AI_PROVIDER = "Ollama"
+
 print(f"[IA] Provedor: {AI_PROVIDER} | Modelo: {AI_MODEL}")
 
-# ----------------- SQLAlchemy / SQLite -----------------
-from sqlalchemy import Column, Integer, String, Text, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-
-# Configuração do SQLite
+# ----------------- 3. SQLAlchemy / SQLite (Ajustado) -----------------
+# O banco fica no /tmp para funcionar na Vercel
 SQLALCHEMY_DATABASE_URL = "sqlite:////tmp/db.sqlite3"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
@@ -63,17 +54,16 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Modelo da tabela para histórico de títulos/descrições
+# Modelo da tabela com o novo campo user_id
 class TitleModel(Base):
     __tablename__ = "titles"
     id = Column(Integer, primary_key=True, index=True)
     titulo = Column(String, nullable=False)
     descricao = Column(Text, nullable=False)
+    user_id = Column(String, index=True, nullable=False) # Identificador do navegador
 
-# Cria o arquivo db.sqlite3 e a tabela, se não existirem
 Base.metadata.create_all(bind=engine)
 
-# Dependency para obter sessão do DB
 def get_db():
     db = SessionLocal()
     try:
@@ -81,27 +71,41 @@ def get_db():
     finally:
         db.close()
 
-# Schemas Pydantic para validação/serialização do histórico
+# ----------------- 4. Schemas Pydantic -----------------
+class Produto(BaseModel):
+    categoria: str
+    beneficios: str
+    material: str
+
 class TitleCreate(BaseModel):
     titulo: str
     descricao: str
+    user_id: str # Campo obrigatório ao salvar
 
-class Title(BaseModel):
+class TitleResponse(BaseModel):
     id: int
     titulo: str
     descricao: str
+    user_id: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True # Compatível com SQLAlchemy
 
-# Endpoints de CRUD para histórico
-@app.get("/titles", response_model=list[Title])
-def read_titles(db: Session = Depends(get_db)):
-    return db.query(TitleModel).order_by(TitleModel.id.desc()).all()
+# ----------------- 5. Endpoints de CRUD -----------------
 
-@app.post("/titles", response_model=Title)
+@app.get("/titles", response_model=list[TitleResponse])
+def read_titles(user_id: str = Query(...), db: Session = Depends(get_db)):
+    """Busca títulos filtrando pelo ID único do usuário/navegador"""
+    return db.query(TitleModel).filter(TitleModel.user_id == user_id).order_by(TitleModel.id.desc()).all()
+
+@app.post("/titles", response_model=TitleResponse)
 def create_title(item: TitleCreate, db: Session = Depends(get_db)):
-    db_obj = TitleModel(titulo=item.titulo, descricao=item.descricao)
+    """Salva um título vinculado a um user_id"""
+    db_obj = TitleModel(
+        titulo=item.titulo, 
+        descricao=item.descricao, 
+        user_id=item.user_id
+    )
     db.add(db_obj)
     db.commit()
     db.refresh(db_obj)
@@ -115,55 +119,33 @@ def delete_title(title_id: int, db: Session = Depends(get_db)):
     db.delete(db_obj)
     db.commit()
 
-# -------------------------------------------------------
+# ----------------- 6. Rota de Geração de IA -----------------
 
-# Rota para gerar título e descrição
 @app.post("/gerar")
 def gerar_titulo_descricao(produto: Produto):
     try:
-        print("\n========= NOVA REQUISIÇÃO =========")
-        print(f"Categoria recebida: {produto.categoria}")
-        print(f"Benefícios recebidos: {produto.beneficios}")
-        print(f"Material recebido: {produto.material}")
-
         prompt = (
             f"Crie um título e uma descrição CURTOS para um produto com base nas informações:\n"
             f"Categoria: {produto.categoria}\n"
             f"Benefícios: {produto.beneficios}\n"
             f"Material: {produto.material}\n\n"
-            "Regras: retorne APENAS texto puro, sem Markdown (sem **, sem #). "
-            "Título: no máximo 60 caracteres, uma linha só, direto ao ponto.\n"
-            "Descrição: no máximo 2 ou 3 frases (cerca de 150 a 200 caracteres), objetiva.\n"
-            "Formato exato:\n"
-            "Título: (título curto)\n"
-            "Descrição: (descrição curta)"
+            "Regras: retorne APENAS texto puro, sem Markdown. "
+            "Título: no máximo 60 caracteres.\n"
+            "Descrição: no máximo 3 frases objetivas.\n"
+            "Formato:\nTítulo: (texto)\nDescrição: (texto)"
         )
-
-        print("\nPrompt montado para enviar à IA:")
-        print(prompt)
 
         response = client.chat.completions.create(
             model=AI_MODEL,
             messages=[
-                {"role": "system", "content": "Você é um especialista em marketing de produtos."},
+                {"role": "system", "content": "Você é um especialista em marketing."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
-            max_tokens=350
+            temperature=0.7
         )
 
-        resultado = response.choices[0].message.content if response.choices else None
-        if not resultado or not resultado.strip():
-            resultado = "A IA não retornou texto. Tente novamente."
-
-        print("\n========= RESPOSTA RECEBIDA =========")
-        print(resultado)
-
+        resultado = response.choices[0].message.content if response.choices else "Erro na IA"
         return {"resultado": resultado}
 
     except Exception as e:
-        print("\n========= ERRO NO BACKEND =========")
-        import traceback
-        traceback.print_exc()
-        err_msg = str(e).strip() or type(e).__name__
-        return {"resultado": f"Erro ao gerar conteúdo: {err_msg}"}
+        return {"resultado": f"Erro ao gerar conteúdo: {str(e)}"}
