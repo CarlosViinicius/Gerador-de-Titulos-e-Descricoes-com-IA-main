@@ -131,15 +131,17 @@ def gerar_titulo_descricao(produto: Produto):
         current_model = AI_MODEL
 
         prompt_text = (
-            f"Crie um título e uma descrição CURTOS e ALTAMENTE VENDEDORES para um produto.\n"
-            "Se houver uma imagem fornecida, analise a imagem e descreva o produto que você vê nela, combinando com as informações abaixo (se existirem):\n"
+            "Atue como um Copywriter de Elite e Criador de Conteúdo Viral.\n"
+            "Crie uma copy para o produto e um roteiro de vídeo curto (15-30s) para TikTok/Reels.\n"
+            "Analise a imagem (se houver) e os dados abaixo:\n"
             f"- Categoria: {produto.categoria or 'Não informada'}\n"
             f"- Benefícios/Detalhes extras: {produto.beneficios or 'Não informados'}\n"
             f"- Material: {produto.material or 'Não informado'}\n\n"
-            "Regras: retorne APENAS texto puro, sem Markdown. "
-            "Título: atrativo, máximo 60 caracteres.\n"
-            "Descrição: máximo 3 frases objetivas focadas em conversão.\n"
-            "Formato exato de resposta:\nTítulo: (texto)\nDescrição: (texto)"
+            "Regras: NENHUMA formatação markdown (sem asteriscos ou hashtags).\n"
+            "O formato da sua resposta DEVE ser EXATAMENTE este:\n"
+            "Título: (Título atrativo, max 60 caracteres)\n"
+            "Descrição: (Descrição persuasiva de até 3 frases)\n"
+            "Roteiro: (Roteiro curto dividido em: 1. Gancho 0-3s, 2. Apresentação, 3. Chamada para Ação)"
         )
 
         # Se o usuário enviou imagem, mudamos a estrutura da mensagem

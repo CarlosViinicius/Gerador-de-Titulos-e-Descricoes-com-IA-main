@@ -9,7 +9,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Save, Download, Trash2, Sparkles, Wand2,
-  History, LayoutDashboard, Settings, ChevronRight, Zap, Copy, UploadCloud, X
+  History, LayoutDashboard, Settings, ChevronRight, Zap, Copy, UploadCloud, X, FileText, Video
 } from "lucide-react";
 import logo from "./assets/icons/logo-copy.png";
 import "./App.css";
@@ -17,7 +17,7 @@ import "./App.css";
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 // ==========================================
-// FUNÇÕES AUXILIARES
+// FUNÇÕES AUXILIARES E PARSER
 // ==========================================
 function stripMarkdown(text) {
   if (!text || typeof text !== "string") return text;
@@ -33,39 +33,38 @@ function stripQuotes(text) {
   return t;
 }
 
+// NOVO PARSER PARA LER O TÍTULO, DESCRIÇÃO E O ROTEIRO
 function parseResultadoApi(texto) {
   if (!texto || typeof texto !== "string") return null;
-  const t = texto.trim();
-  const tituloRegex = /(?:^|\n)\s*\*{0,2}\s*T[ií]tulo\s*:\s*\*{0,2}\s*["']?\s*([^"\n]+?)["']?\s*(?=\n|$)/i;
-  const descRegex = /(?:^|\n)\s*\*{0,2}\s*Descri[cç][aã]o\s*:\s*\*{0,2}\s*["']?([\s\S]*)["']?\s*$/i;
-  const tituloMatch = t.match(tituloRegex);
-  const descMatch = t.match(descRegex);
-  if (tituloMatch && descMatch) return { titulo: stripQuotes(stripMarkdown(tituloMatch[1].trim())), descricao: stripQuotes(stripMarkdown(descMatch[1].trim())) };
-  const simple = t.match(/T[ií]tulo\s*:\s*([^\n]+)\s*\n\s*Descri[cç][aã]o\s*:\s*([\s\S]*)/i);
-  if (simple) return { titulo: stripQuotes(stripMarkdown(simple[1].trim())), descricao: stripQuotes(stripMarkdown(simple[2].trim())) };
+  const t = stripMarkdown(texto);
+
+  const tituloMatch = t.match(/T[ií]tulo:\s*(.*?)(?=\n|$)/i);
+  const descMatch = t.match(/Descri[cç][aã]o:\s*([\s\S]*?)(?=\nRoteiro|$)/i);
+  const roteiroMatch = t.match(/Roteiro:\s*([\s\S]*)$/i);
+
+  if (tituloMatch && descMatch) {
+    return {
+      titulo: stripQuotes(tituloMatch[1].trim()),
+      descricao: stripQuotes(descMatch[1].trim()),
+      roteiro: roteiroMatch ? stripQuotes(roteiroMatch[1].trim()) : null
+    };
+  }
   return null;
 }
 
-// ==========================================
-// COMPONENTE: EFEITO DE MÁQUINA DE ESCREVER
-// ==========================================
 const Typewriter = ({ text, delay = 15 }) => {
   const [displayedText, setDisplayedText] = useState("");
-
   useEffect(() => {
-    setDisplayedText(""); 
+    setDisplayedText("");
     let i = 0;
     const timer = setInterval(() => {
       if (i < text.length) {
         setDisplayedText((prev) => prev + text.charAt(i));
         i++;
-      } else {
-        clearInterval(timer);
-      }
+      } else clearInterval(timer);
     }, delay);
     return () => clearInterval(timer);
   }, [text, delay]);
-
   return <span>{displayedText}</span>;
 };
 
@@ -94,25 +93,28 @@ function MainPage() {
     if (!id) { id = "user_" + Math.random().toString(36).substring(2, 11); localStorage.setItem("user_session_id", id); }
     return id;
   });
-  
+
   const [categoria, setCategoria] = useState("");
   const [outraCategoria, setOutraCategoria] = useState("");
   const [material, setMaterial] = useState("");
   const [tom, setTom] = useState("");
   const [beneficios, setBeneficios] = useState("");
-  const [imagemBase64, setImagemBase64] = useState(null); // NOVO STATE PARA A IMAGEM
-  
+  const [imagemBase64, setImagemBase64] = useState(null);
+
   const [itemSelecionado, setItemSelecionado] = useState(null);
   const [historico, setHistorico] = useState([]);
   const [gerando, setGerando] = useState(false);
   const [toast, setToast] = useState({ show: false, message: "" });
+
+  // NOVO ESTADO PARA CONTROLAR AS ABAS (TABS)
+  const [abaAtiva, setAbaAtiva] = useState("copy");
 
   const categorias = ["Camisa", "Calçado", "Bolsa", "Acessório", "Outros"];
   const tons = ["Informal", "Profissional", "Divertido", "Elegante"];
 
   useEffect(() => {
     fetch(`${API_BASE}/titles?user_id=${userId}`)
-      .then(r => r.json()).then(d => setHistorico(d)).catch(() => {});
+      .then(r => r.json()).then(d => setHistorico(d)).catch(() => { });
   }, [userId]);
 
   const showToast = (message) => {
@@ -120,14 +122,11 @@ function MainPage() {
     setTimeout(() => setToast({ show: false, message: "" }), 2500);
   };
 
-  // FUNÇÃO PARA LER A IMAGEM
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagemBase64(reader.result); // Salva a imagem em formato base64
-      };
+      reader.onloadend = () => setImagemBase64(reader.result);
       reader.readAsDataURL(file);
     }
   };
@@ -135,29 +134,21 @@ function MainPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setGerando(true);
-    setItemSelecionado(null); 
-    
-    // Agora enviamos a imagem junto (pode ser null se não anexou nada)
-    const dados = { 
-      categoria: categoria === "Outros" ? outraCategoria : categoria, 
-      beneficios, 
-      material,
-      imagem: imagemBase64 // Enviando a imagem para a API!
-    };
-    
+    setItemSelecionado(null);
+    setAbaAtiva("copy"); // Sempre volta pra aba principal ao gerar
+
+    const dados = { categoria: categoria === "Outros" ? outraCategoria : categoria, beneficios, material, imagem: imagemBase64 };
+
     try {
       const res = await fetch(`${API_BASE}/gerar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
       const json = await res.json();
       const parsed = parseResultadoApi(json.resultado);
-      setItemSelecionado(parsed || { titulo: "Gerado com IA", descricao: stripMarkdown(json.resultado) });
+      setItemSelecionado(parsed || { titulo: "Gerado com IA", descricao: stripMarkdown(json.resultado), roteiro: null });
     } catch {
-      setItemSelecionado({ titulo: "Erro", descricao: "Erro ao gerar conteúdo. Verifique sua conexão ou servidor." });
-    } finally { 
-      setGerando(false); 
-    }
+      setItemSelecionado({ titulo: "Erro", descricao: "Erro ao gerar conteúdo. Verifique sua conexão.", roteiro: null });
+    } finally { setGerando(false); }
   };
 
-  // Funções de botão mantidas...
   const salvar = async () => {
     if (!itemSelecionado) return;
     try {
@@ -165,12 +156,13 @@ function MainPage() {
       const saved = await res.json();
       setHistorico(prev => [saved, ...prev]);
       showToast("✦ Salvo no histórico");
-    } catch {}
+    } catch { }
   };
 
   const exportar = () => {
     if (!itemSelecionado) return;
-    const blob = new Blob([`Título: ${itemSelecionado.titulo}\n\nDescrição: ${itemSelecionado.descricao}`], { type: "text/plain;charset=utf-8" });
+    const textoFinal = `Título: ${itemSelecionado.titulo}\n\nDescrição:\n${itemSelecionado.descricao}${itemSelecionado.roteiro ? `\n\nROTEIRO PARA VÍDEO:\n${itemSelecionado.roteiro}` : ""}`;
+    const blob = new Blob([textoFinal], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `${itemSelecionado.titulo.replace(/\s+/g, "_")}.txt`; a.click();
     URL.revokeObjectURL(url);
@@ -178,34 +170,30 @@ function MainPage() {
 
   const copiarTexto = () => {
     if (!itemSelecionado) return;
-    const textoFormatado = `Título: ${itemSelecionado.titulo}\n\nDescrição:\n${itemSelecionado.descricao}`;
+    // Se o usuário clicar em copiar na aba Roteiro, copia só o roteiro.
+    const textoFormatado = abaAtiva === "roteiro"
+      ? `Roteiro Viral:\n\n${itemSelecionado.roteiro}`
+      : `Título: ${itemSelecionado.titulo}\n\nDescrição:\n${itemSelecionado.descricao}`;
+
     navigator.clipboard.writeText(textoFormatado);
-    showToast("✦ Texto copiado!");
+    showToast(abaAtiva === "roteiro" ? "✦ Roteiro copiado!" : "✦ Texto copiado!");
   };
 
   const deletar = async (id) => {
-    try { await fetch(`${API_BASE}/titles/${id}`, { method: "DELETE" }); setHistorico(prev => prev.filter(i => i.id !== id)); } catch {}
+    try { await fetch(`${API_BASE}/titles/${id}`, { method: "DELETE" }); setHistorico(prev => prev.filter(i => i.id !== id)); } catch { }
   };
 
   return (
     <div>
-      <div className="bg-fx">
-        <div className="bg-orb bg-orb-1" />
-        <div className="bg-orb bg-orb-2" />
-        <div className="bg-orb bg-orb-3" />
-      </div>
-      <div className="bg-scan" />
-      <div className="bg-grid" />
-      <div className="bg-vignette" />
+      <div className="bg-fx"><div className="bg-orb bg-orb-1" /><div className="bg-orb bg-orb-2" /><div className="bg-orb bg-orb-3" /></div>
+      <div className="bg-scan" /><div className="bg-grid" /><div className="bg-vignette" />
 
       <div className="page-content">
         <header className="header">
           <div className="header-inner">
             <Link to="/" className="logo-mark">
               <div className="logo-icon"><img src={logo} alt="Logo" width={120} height={120} /></div>
-              <div>
-                <div className="logo-text">Copy<span>Gen</span></div>
-              </div>
+              <div><div className="logo-text">Copy<span>Gen</span></div></div>
             </Link>
             <nav className="nav">
               <Link to="/dashboard"><LayoutDashboard size={13} /> Dashboard</Link>
@@ -219,47 +207,31 @@ function MainPage() {
           initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
         >
-          <div className="hero-badge">
-            <span className="hero-badge-dot" /> Sistema ativo
-          </div>
+          <div className="hero-badge"><span className="hero-badge-dot" /> Sistema ativo</div>
           <p className="hero-eyebrow">IA Generativa <span>·</span> E-commerce <span>·</span> Conversão</p>
-          <h2 className="hero-title">
-            Descrições que<br /><span className="neon">convertem</span> de verdade
-          </h2>
-          <p className="hero-sub">
-            Gere títulos e descrições irresistíveis para seus produtos com inteligência artificial de ponta.
-          </p>
+          <h2 className="hero-title">Descrições que<br /><span className="neon">convertem</span> de verdade</h2>
+          <p className="hero-sub">Gere títulos, descrições irresistíveis e roteiros virais para seus produtos com IA de ponta.</p>
         </motion.section>
 
         <div className="main-grid">
 
           {/* CARD 1: Parâmetros */}
-          <motion.div className="card"
-            initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.14, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          >
+          <motion.div className="card" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14, duration: 0.55 }}>
             <div className="card-head">
               <div className="card-head-icon icon-green"><Wand2 size={15} /></div>
               <div className="card-head-text"><h3>Parâmetros</h3><p>Configure o que deseja gerar</p></div>
               <span className="card-head-badge">STEP 01</span>
             </div>
             <div className="card-body">
-              <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", flex:1 }}>
-                
-                {/* NOVO CAMPO DE IMAGEM AQUI */}
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+
                 <div className="field">
                   <label>Foto do Produto (Opcional)</label>
                   <div className="mt-1">
                     {imagemBase64 ? (
                       <div className="relative rounded-xl overflow-hidden border border-[rgba(16,185,129,0.3)]">
                         <img src={imagemBase64} alt="Preview do Produto" className="w-full h-32 object-cover opacity-90" />
-                        <button 
-                          type="button" 
-                          onClick={() => setImagemBase64(null)} 
-                          className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white p-1.5 rounded-lg backdrop-blur-md transition-all"
-                        >
-                          <X size={14} />
-                        </button>
+                        <button type="button" onClick={() => setImagemBase64(null)} className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white p-1.5 rounded-lg backdrop-blur-md transition-all"><X size={14} /></button>
                       </div>
                     ) : (
                       <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-[rgba(16,185,129,0.2)] bg-[rgba(16,185,129,0.03)] rounded-xl cursor-pointer hover:border-[rgba(16,185,129,0.5)] hover:bg-[rgba(16,185,129,0.08)] transition-all">
@@ -283,8 +255,7 @@ function MainPage() {
                     <input type="text" placeholder="Digite a nova categoria" value={outraCategoria} onChange={e => setOutraCategoria(e.target.value)} style={{ marginTop: 8 }} required={!imagemBase64} />
                   )}
                 </div>
-                
-                {/* Se ele colocar uma imagem, os outros campos viram opcionais! */}
+
                 <div className="field flex gap-3">
                   <div className="flex-1">
                     <label>Material</label>
@@ -301,9 +272,9 @@ function MainPage() {
                   </div>
                 </div>
 
-                <div className="field" style={{ flex:1 }}>
+                <div className="field" style={{ flex: 1 }}>
                   <label>Benefícios extras</label>
-                  <textarea rows={3} placeholder="Algum detalhe que a foto não mostra? (Ex: Proteção UV, cheiro de morango...)" value={beneficios} onChange={e => setBeneficios(e.target.value)} style={{ height:"100%", minHeight:80 }} />
+                  <textarea rows={3} placeholder="Algum detalhe que a foto não mostra? (Ex: Proteção UV...)" value={beneficios} onChange={e => setBeneficios(e.target.value)} style={{ height: "100%", minHeight: 80 }} />
                 </div>
 
                 <button type="submit" className="btn-primary" disabled={gerando}>
@@ -313,51 +284,66 @@ function MainPage() {
             </div>
           </motion.div>
 
-          {/* CARD 2: Resultado */}
-          <motion.div className="card"
-            initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.22, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          >
+          {/* CARD 2: Resultado (Agora com Abas) */}
+          <motion.div className="card" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22, duration: 0.55 }}>
             <div className="card-head">
               <div className="card-head-icon icon-lime"><Sparkles size={15} /></div>
-              <div className="card-head-text"><h3>Resultado</h3><p>Título e descrição gerados</p></div>
+              <div className="card-head-text"><h3>Resultado</h3><p>Título, descrição e roteiro</p></div>
               <span className="card-head-badge">STEP 02</span>
             </div>
             <div className="card-body">
               <AnimatePresence mode="wait">
                 {gerando ? (
-                  <motion.div key="loading" className="flex flex-col flex-1 gap-3 p-2 animate-pulse"
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  >
+                  <motion.div key="loading" className="flex flex-col flex-1 gap-3 p-2 animate-pulse" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <div className="h-8 bg-emerald-900/40 rounded-lg w-3/4 mx-auto mb-4"></div>
                     <div className="h-1 bg-emerald-500/30 rounded w-10 mx-auto mb-6"></div>
-                    <div className="h-3 bg-emerald-900/30 rounded w-full"></div>
-                    <div className="h-3 bg-emerald-900/30 rounded w-full"></div>
-                    <div className="h-3 bg-emerald-900/30 rounded w-5/6"></div>
-                    <div className="h-3 bg-emerald-900/30 rounded w-4/6 mb-4"></div>
-                    <div className="h-3 bg-emerald-900/30 rounded w-full"></div>
-                    <div className="h-3 bg-emerald-900/30 rounded w-3/4"></div>
+                    <div className="h-3 bg-emerald-900/30 rounded w-full"></div><div className="h-3 bg-emerald-900/30 rounded w-full"></div>
+                    <div className="h-3 bg-emerald-900/30 rounded w-5/6"></div><div className="h-3 bg-emerald-900/30 rounded w-4/6 mb-4"></div>
                   </motion.div>
                 ) : itemSelecionado ? (
-                  <motion.div key="result" className="result-content"
-                    initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.32 }}
-                  >
-                    <h2 className="result-titulo">{itemSelecionado.titulo}</h2>
+                  <motion.div key="result" className="result-content" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.32 }}>
+
+                    {/* NAVEGAÇÃO DAS ABAS */}
+                    <div className="tabs-container">
+                      <button onClick={() => setAbaAtiva("copy")} className={`tab-btn ${abaAtiva === "copy" ? "active" : ""}`}>
+                        <FileText size={15} /> Descrição Site
+                      </button>
+                      {/* O botão Roteiro só aparece se a IA gerou um roteiro */}
+                      {itemSelecionado.roteiro && (
+                        <button onClick={() => setAbaAtiva("roteiro")} className={`tab-btn ${abaAtiva === "roteiro" ? "active" : ""}`}>
+                          <Video size={15} /> Roteiro TikTok
+                        </button>
+                      )}
+                    </div>
+
+                    <h2 className="result-titulo" style={{ fontSize: abaAtiva === "roteiro" ? "1.2rem" : "1.45rem" }}>
+                      {abaAtiva === "copy" ? itemSelecionado.titulo : "Roteiro Viral 🔥"}
+                    </h2>
+
                     <div className="result-divider" />
-                    <p className="result-desc"><Typewriter text={itemSelecionado.descricao} delay={10} /></p>
+
+                    {/* EXIBE O CONTEÚDO BASEADO NA ABA ESCOLHIDA */}
+                    <p className="result-desc">
+                      {abaAtiva === "copy" ? (
+                        <Typewriter text={itemSelecionado.descricao} delay={10} />
+                      ) : (
+                        <Typewriter text={itemSelecionado.roteiro} delay={10} />
+                      )}
+                    </p>
+
                     <div className="result-actions">
-                      <button className="btn-save" onClick={salvar}><Save size={14} /> Salvar</button>
+                      {/* Desabilita salvar na aba roteiro só pra não confundir o histórico, ou deixa ativo */}
+                      <button className="btn-save" onClick={salvar} disabled={abaAtiva === "roteiro"} style={{ opacity: abaAtiva === "roteiro" ? 0.5 : 1 }}>
+                        <Save size={14} /> Salvar
+                      </button>
                       <button className="btn-export" onClick={copiarTexto}><Copy size={14} /> Copiar</button>
                       <button className="btn-export" onClick={exportar}><Download size={14} /> Exportar</button>
                     </div>
                   </motion.div>
                 ) : (
-                  <motion.div key="empty" className="result-empty"
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  >
+                  <motion.div key="empty" className="result-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <div className="result-empty-icon"><Zap size={28} /></div>
-                    <p>Preencha os parâmetros ou anexe uma foto e clique em gerar</p>
+                    <p>Preencha os parâmetros e clique em gerar</p>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -365,28 +351,21 @@ function MainPage() {
           </motion.div>
 
           {/* CARD 3: Histórico */}
-          <motion.div className="card"
-            initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.30, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          >
-            {/* Mantido igual ao anterior */}
+          <motion.div className="card" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.30, duration: 0.55 }}>
             <div className="card-head">
               <div className="card-head-icon icon-slate"><History size={15} /></div>
               <div className="card-head-text"><h3>Histórico</h3><p>Gerações anteriores salvas</p></div>
               <span className="card-head-badge">STEP 03</span>
             </div>
-            <div className="card-body" style={{ padding:"1.1rem", display:"flex", flexDirection:"column" }}>
+            <div className="card-body" style={{ padding: "1.1rem", display: "flex", flexDirection: "column" }}>
               {historico.length === 0 ? (
                 <div className="history-empty">Nenhum item salvo ainda.<br />Gere e salve seu primeiro conteúdo.</div>
               ) : (
                 <ul className="history-list">
                   <AnimatePresence>
                     {historico.map(item => (
-                      <motion.li key={item.id} layout
-                        initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}
-                        transition={{ duration: 0.22 }}
-                        className="history-item"
-                        onClick={() => setItemSelecionado({ titulo: item.titulo, descricao: item.descricao })}
+                      <motion.li key={item.id} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }} transition={{ duration: 0.22 }}
+                        className="history-item" onClick={() => setItemSelecionado({ titulo: item.titulo, descricao: item.descricao, roteiro: null })}
                       >
                         <div className="history-item-text">
                           <p className="history-item-titulo">{item.titulo}</p>
@@ -405,17 +384,11 @@ function MainPage() {
           </motion.div>
 
         </div>
-
-        <footer className="footer">
-          <p>Feito por <a href="https://www.instagram.com/carlosviinicius__/?hl=pt-br" target="_blank" rel="noopener noreferrer">Carlos Vinicius</a> · Gerador com Inteligência Artificial</p>
-        </footer>
       </div>
 
       <AnimatePresence>
         {toast.show && (
-          <motion.div className="toast"
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 14 }}
-          >
+          <motion.div className="toast" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 14 }}>
             {toast.message}
           </motion.div>
         )}
@@ -433,10 +406,8 @@ function ComingSoon() {
       <div className="coming-soon">
         <div className="coming-soon-icon">🚧</div>
         <h1>Em breve</h1>
-        <p>Esta página está em construção. Mais funcionalidades chegando em breve.</p>
-        <button onClick={() => navigate("/")} className="btn-primary" style={{ width:"auto", padding:"12px 32px" }}>
-          Voltar ao início
-        </button>
+        <p>Página em construção.</p>
+        <button onClick={() => navigate("/")} className="btn-primary" style={{ width: "auto", padding: "12px 32px" }}>Voltar ao início</button>
       </div>
     </>
   );

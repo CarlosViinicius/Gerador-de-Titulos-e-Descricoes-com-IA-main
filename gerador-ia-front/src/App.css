@@ -416,3 +416,22 @@ body {
 }
 .hero-stat-label { font-size:0.72rem;color:var(--text-3);margin-top:2px; }
 .hero-stat-divider { width:1px;height:32px;background:var(--border); }
+
+/* ── ABAS (TABS) ─────────────────────────────────── */
+.tabs-container {
+  display: flex; gap: 1.5rem; border-bottom: 1px solid var(--border);
+  margin-bottom: 1.2rem; padding-bottom: 0.5rem; justify-content: center;
+}
+.tab-btn {
+  background: transparent; border: none; color: var(--text-3);
+  font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; position: relative;
+  display: flex; align-items: center; gap: 6px;
+}
+.tab-btn:hover { color: var(--text-2); }
+.tab-btn.active { color: var(--green-bright); }
+.tab-btn.active::after {
+  content: ''; position: absolute; bottom: -0.6rem; left: 0; right: 0;
+  height: 2px; background: var(--green-bright); border-radius: 2px;
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+}
