@@ -9,10 +9,10 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Save, Download, Trash2, Sparkles, Wand2,
-  History, LayoutDashboard, Settings, ChevronRight, Zap, Copy
+  History, LayoutDashboard, Settings, ChevronRight, Zap, Copy, UploadCloud, X
 } from "lucide-react";
 import logo from "./assets/icons/logo-copy.png";
-import "./App.css"; // Mantém a importação do seu CSS unificado
+import "./App.css";
 
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -100,11 +100,11 @@ function MainPage() {
   const [material, setMaterial] = useState("");
   const [tom, setTom] = useState("");
   const [beneficios, setBeneficios] = useState("");
+  const [imagemBase64, setImagemBase64] = useState(null); // NOVO STATE PARA A IMAGEM
+  
   const [itemSelecionado, setItemSelecionado] = useState(null);
   const [historico, setHistorico] = useState([]);
   const [gerando, setGerando] = useState(false);
-  
-  // Controle do Toast unificado
   const [toast, setToast] = useState({ show: false, message: "" });
 
   const categorias = ["Camisa", "Calçado", "Bolsa", "Acessório", "Outros"];
@@ -120,24 +120,44 @@ function MainPage() {
     setTimeout(() => setToast({ show: false, message: "" }), 2500);
   };
 
+  // FUNÇÃO PARA LER A IMAGEM
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagemBase64(reader.result); // Salva a imagem em formato base64
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setGerando(true);
-    setItemSelecionado(null); // Limpa o resultado anterior para mostrar o Skeleton
+    setItemSelecionado(null); 
     
-    const dados = { categoria: categoria === "Outros" ? outraCategoria : categoria, beneficios, material };
+    // Agora enviamos a imagem junto (pode ser null se não anexou nada)
+    const dados = { 
+      categoria: categoria === "Outros" ? outraCategoria : categoria, 
+      beneficios, 
+      material,
+      imagem: imagemBase64 // Enviando a imagem para a API!
+    };
+    
     try {
       const res = await fetch(`${API_BASE}/gerar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
       const json = await res.json();
       const parsed = parseResultadoApi(json.resultado);
       setItemSelecionado(parsed || { titulo: "Gerado com IA", descricao: stripMarkdown(json.resultado) });
     } catch {
-      setItemSelecionado({ titulo: "Erro", descricao: "Erro ao gerar conteúdo. Tente novamente." });
+      setItemSelecionado({ titulo: "Erro", descricao: "Erro ao gerar conteúdo. Verifique sua conexão ou servidor." });
     } finally { 
       setGerando(false); 
     }
   };
 
+  // Funções de botão mantidas...
   const salvar = async () => {
     if (!itemSelecionado) return;
     try {
@@ -169,7 +189,6 @@ function MainPage() {
 
   return (
     <div>
-      {/* Background Effects */}
       <div className="bg-fx">
         <div className="bg-orb bg-orb-1" />
         <div className="bg-orb bg-orb-2" />
@@ -180,7 +199,6 @@ function MainPage() {
       <div className="bg-vignette" />
 
       <div className="page-content">
-        {/* Header */}
         <header className="header">
           <div className="header-inner">
             <Link to="/" className="logo-mark">
@@ -197,7 +215,6 @@ function MainPage() {
           </div>
         </header>
 
-        {/* Hero Section */}
         <motion.section className="hero"
           initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
@@ -214,18 +231,6 @@ function MainPage() {
           </p>
         </motion.section>
 
-        {/* Stats row */}
-        <motion.div className="hero-stat-row"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35, duration: 0.5 }}
-        >
-          <div className="hero-stat"><div className="hero-stat-num">2s</div><div className="hero-stat-label">Tempo de geração</div></div>
-          <div className="hero-stat-divider" />
-          <div className="hero-stat"><div className="hero-stat-num">GPT</div><div className="hero-stat-label">Motor de linguagem</div></div>
-          <div className="hero-stat-divider" />
-          <div className="hero-stat"><div className="hero-stat-num">∞</div><div className="hero-stat-label">Gerações ilimitadas</div></div>
-        </motion.div>
-
-        {/* ── GRID PRINCIPAL ── */}
         <div className="main-grid">
 
           {/* CARD 1: Parâmetros */}
@@ -240,35 +245,67 @@ function MainPage() {
             </div>
             <div className="card-body">
               <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", flex:1 }}>
+                
+                {/* NOVO CAMPO DE IMAGEM AQUI */}
+                <div className="field">
+                  <label>Foto do Produto (Opcional)</label>
+                  <div className="mt-1">
+                    {imagemBase64 ? (
+                      <div className="relative rounded-xl overflow-hidden border border-[rgba(16,185,129,0.3)]">
+                        <img src={imagemBase64} alt="Preview do Produto" className="w-full h-32 object-cover opacity-90" />
+                        <button 
+                          type="button" 
+                          onClick={() => setImagemBase64(null)} 
+                          className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white p-1.5 rounded-lg backdrop-blur-md transition-all"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-[rgba(16,185,129,0.2)] bg-[rgba(16,185,129,0.03)] rounded-xl cursor-pointer hover:border-[rgba(16,185,129,0.5)] hover:bg-[rgba(16,185,129,0.08)] transition-all">
+                        <UploadCloud size={24} className="text-[#34d399] mb-2" />
+                        <span className="font-['DM_Mono'] text-[0.65rem] uppercase tracking-widest text-[#84b8a0]">Anexar imagem</span>
+                        <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+
                 <div className="field">
                   <label>Categoria</label>
                   <div className="select-wrap">
-                    <select value={categoria} onChange={e => setCategoria(e.target.value)} required>
+                    <select value={categoria} onChange={e => setCategoria(e.target.value)} required={!imagemBase64}>
                       <option value="">Selecione a categoria</option>
                       {categorias.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </div>
                   {categoria === "Outros" && (
-                    <input type="text" placeholder="Digite a nova categoria" value={outraCategoria} onChange={e => setOutraCategoria(e.target.value)} style={{ marginTop: 8 }} required />
+                    <input type="text" placeholder="Digite a nova categoria" value={outraCategoria} onChange={e => setOutraCategoria(e.target.value)} style={{ marginTop: 8 }} required={!imagemBase64} />
                   )}
                 </div>
-                <div className="field">
-                  <label>Material</label>
-                  <input placeholder="Ex: algodão, couro, nylon…" value={material} onChange={e => setMaterial(e.target.value)} required />
-                </div>
-                <div className="field">
-                  <label>Tom de voz</label>
-                  <div className="select-wrap">
-                    <select value={tom} onChange={e => setTom(e.target.value)} required>
-                      <option value="">Selecione o tom</option>
-                      {tons.map(t => <option key={t}>{t}</option>)}
-                    </select>
+                
+                {/* Se ele colocar uma imagem, os outros campos viram opcionais! */}
+                <div className="field flex gap-3">
+                  <div className="flex-1">
+                    <label>Material</label>
+                    <input placeholder="Opcional se enviar foto" value={material} onChange={e => setMaterial(e.target.value)} />
+                  </div>
+                  <div className="flex-1">
+                    <label>Tom de voz</label>
+                    <div className="select-wrap">
+                      <select value={tom} onChange={e => setTom(e.target.value)}>
+                        <option value="">Selecione</option>
+                        {tons.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                    </div>
                   </div>
                 </div>
+
                 <div className="field" style={{ flex:1 }}>
-                  <label>Benefícios do produto</label>
-                  <textarea rows={4} placeholder="Ex: confortável, durável, respirável…" value={beneficios} onChange={e => setBeneficios(e.target.value)} style={{ height:"100%", minHeight:96 }} required />
+                  <label>Benefícios extras</label>
+                  <textarea rows={3} placeholder="Algum detalhe que a foto não mostra? (Ex: Proteção UV, cheiro de morango...)" value={beneficios} onChange={e => setBeneficios(e.target.value)} style={{ height:"100%", minHeight:80 }} />
                 </div>
+
                 <button type="submit" className="btn-primary" disabled={gerando}>
                   {gerando ? <><div className="spinner" /> Gerando…</> : <><Sparkles size={14} /> Gerar com IA</>}
                 </button>
@@ -276,7 +313,7 @@ function MainPage() {
             </div>
           </motion.div>
 
-          {/* CARD 2: Resultado (com Skeleton Loader e Typewriter) */}
+          {/* CARD 2: Resultado */}
           <motion.div className="card"
             initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.22, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
@@ -289,7 +326,6 @@ function MainPage() {
             <div className="card-body">
               <AnimatePresence mode="wait">
                 {gerando ? (
-                  /* --- SKELETON LOADER --- */
                   <motion.div key="loading" className="flex flex-col flex-1 gap-3 p-2 animate-pulse"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   >
@@ -303,19 +339,13 @@ function MainPage() {
                     <div className="h-3 bg-emerald-900/30 rounded w-3/4"></div>
                   </motion.div>
                 ) : itemSelecionado ? (
-                  /* --- RESULTADO GERADO --- */
                   <motion.div key="result" className="result-content"
                     initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.32 }}
                   >
                     <h2 className="result-titulo">{itemSelecionado.titulo}</h2>
                     <div className="result-divider" />
-                    
-                    {/* Efeito Typewriter na descrição */}
-                    <p className="result-desc">
-                      <Typewriter text={itemSelecionado.descricao} delay={10} />
-                    </p>
-                    
+                    <p className="result-desc"><Typewriter text={itemSelecionado.descricao} delay={10} /></p>
                     <div className="result-actions">
                       <button className="btn-save" onClick={salvar}><Save size={14} /> Salvar</button>
                       <button className="btn-export" onClick={copiarTexto}><Copy size={14} /> Copiar</button>
@@ -323,12 +353,11 @@ function MainPage() {
                     </div>
                   </motion.div>
                 ) : (
-                  /* --- ESTADO VAZIO --- */
                   <motion.div key="empty" className="result-empty"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   >
                     <div className="result-empty-icon"><Zap size={28} /></div>
-                    <p>Preencha os parâmetros e clique em gerar</p>
+                    <p>Preencha os parâmetros ou anexe uma foto e clique em gerar</p>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -340,6 +369,7 @@ function MainPage() {
             initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.30, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
           >
+            {/* Mantido igual ao anterior */}
             <div className="card-head">
               <div className="card-head-icon icon-slate"><History size={15} /></div>
               <div className="card-head-text"><h3>Histórico</h3><p>Gerações anteriores salvas</p></div>
@@ -381,7 +411,6 @@ function MainPage() {
         </footer>
       </div>
 
-      {/* Notificações (Toasts) */}
       <AnimatePresence>
         {toast.show && (
           <motion.div className="toast"
@@ -395,9 +424,6 @@ function MainPage() {
   );
 }
 
-// ==========================================
-// PÁGINA: EM BREVE
-// ==========================================
 function ComingSoon() {
   const navigate = useNavigate();
   return (

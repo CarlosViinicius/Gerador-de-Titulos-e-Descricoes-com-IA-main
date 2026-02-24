@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from pydantic import BaseModel
+from typing import Optional # NOVO IMPORT AQUI
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -43,7 +44,7 @@ else:
     AI_MODEL = OLLAMA_MODEL
     AI_PROVIDER = "Ollama"
 
-print(f"[IA] Provedor: {AI_PROVIDER} | Modelo: {AI_MODEL}")
+print(f"[IA] Provedor: {AI_PROVIDER} | Modelo Padrão: {AI_MODEL}")
 
 # ----------------- 3. SQLAlchemy / SQLite (Ajustado) -----------------
 # O banco fica no /tmp para funcionar na Vercel
@@ -73,9 +74,11 @@ def get_db():
 
 # ----------------- 4. Schemas Pydantic -----------------
 class Produto(BaseModel):
-    categoria: str
-    beneficios: str
-    material: str
+    # Todos agora são opcionais, pois o usuário pode mandar só a foto
+    categoria: Optional[str] = ""
+    beneficios: Optional[str] = ""
+    material: Optional[str] = ""
+    imagem: Optional[str] = None # NOVO: Campo para receber a imagem em base64
 
 class TitleCreate(BaseModel):
     titulo: str
@@ -124,28 +127,64 @@ def delete_title(title_id: int, db: Session = Depends(get_db)):
 @app.post("/gerar")
 def gerar_titulo_descricao(produto: Produto):
     try:
-        prompt = (
-            f"Crie um título e uma descrição CURTOS para um produto com base nas informações:\n"
-            f"Categoria: {produto.categoria}\n"
-            f"Benefícios: {produto.beneficios}\n"
-            f"Material: {produto.material}\n\n"
+        # Define o modelo atual que vai ser usado na requisição
+        current_model = AI_MODEL
+
+        prompt_text = (
+            f"Crie um título e uma descrição CURTOS e ALTAMENTE VENDEDORES para um produto.\n"
+            "Se houver uma imagem fornecida, analise a imagem e descreva o produto que você vê nela, combinando com as informações abaixo (se existirem):\n"
+            f"- Categoria: {produto.categoria or 'Não informada'}\n"
+            f"- Benefícios/Detalhes extras: {produto.beneficios or 'Não informados'}\n"
+            f"- Material: {produto.material or 'Não informado'}\n\n"
             "Regras: retorne APENAS texto puro, sem Markdown. "
-            "Título: no máximo 60 caracteres.\n"
-            "Descrição: no máximo 3 frases objetivas.\n"
-            "Formato:\nTítulo: (texto)\nDescrição: (texto)"
+            "Título: atrativo, máximo 60 caracteres.\n"
+            "Descrição: máximo 3 frases objetivas focadas em conversão.\n"
+            "Formato exato de resposta:\nTítulo: (texto)\nDescrição: (texto)"
         )
 
+        # Se o usuário enviou imagem, mudamos a estrutura da mensagem
+        if produto.imagem:
+            user_content = [
+                {"type": "text", "text": prompt_text},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": produto.imagem # Já vem como data:image/jpeg;base64,... do React
+                    }
+                }
+            ]
+            
+            # --- AUTO-TROCA PARA MODELO DE VISÃO ---
+            # Modelos normais (como gpt-3.5 ou llama 3.1 8b) dão erro com imagens. 
+            # Se for Groq ou OpenAI, forçamos um modelo que suporta visão.
+            if AI_PROVIDER == "Groq":
+                current_model = "llama-3.2-11b-vision-preview"
+            elif AI_PROVIDER == "OpenAI":
+                current_model = "gpt-4o-mini"
+            # Se for Ollama, assumimos que o modelo padrão (ex: llava ou llama3.2-vision) já suporta.
+            
+            print(f"📸 Imagem recebida! Usando modelo de visão: {current_model}")
+            
+        else:
+            # Se não tem imagem, envia só a string normal
+            user_content = prompt_text
+            print(f"📝 Apenas texto recebido. Usando modelo: {current_model}")
+
+
+        # Faz a chamada para a IA
         response = client.chat.completions.create(
-            model=AI_MODEL,
+            model=current_model,
             messages=[
-                {"role": "system", "content": "Você é um especialista em marketing."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": "Você é um Copywriter Especialista em E-commerce e Análise de Imagens."},
+                {"role": "user", "content": user_content}
             ],
-            temperature=0.7
+            temperature=0.7,
+            max_tokens=400 # Boa prática para visão
         )
 
         resultado = response.choices[0].message.content if response.choices else "Erro na IA"
         return {"resultado": resultado}
 
     except Exception as e:
+        print(f"Erro no backend: {str(e)}") # Útil para debug no terminal
         return {"resultado": f"Erro ao gerar conteúdo: {str(e)}"}
