@@ -257,13 +257,16 @@ function MainPage() {
                     {imagemBase64 ? (
                       <div className="relative rounded-xl overflow-hidden border border-[rgba(16,185,129,0.3)]">
                         <img src={imagemBase64} alt="Preview do Produto" className="w-full h-32 object-cover opacity-90" />
-                        <button type="button" onClick={() => setImagemBase64(null)} className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white p-1.5 rounded-lg backdrop-blur-md transition-all"><X size={14} /></button>
+                        <button type="button" onClick={() => setImagemBase64(null)} className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white p-1.5 rounded-lg backdrop-blur-md transition-all">
+                          <X size={14} />
+                        </button>
                       </div>
                     ) : (
-                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[rgba(16,185,129,0.2)] bg-[rgba(16,185,129,0.03)] rounded-xl cursor-pointer hover:border-[rgba(16,185,129,0.5)] hover:bg-[rgba(16,185,129,0.08)] transition-all text-center">
-                        <div className="flex flex-col items-center justify-center">
+                      /* AQUI ESTÁ A CORREÇÃO: flex flex-col items-center justify-center w-full h-32 */
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[rgba(16,185,129,0.2)] bg-[rgba(16,185,129,0.03)] rounded-xl cursor-pointer hover:border-[rgba(16,185,129,0.5)] hover:bg-[rgba(16,185,129,0.08)] transition-all">
+                        <div className="flex flex-col items-center justify-center pointer-events-none">
                           <UploadCloud size={24} className="text-[#34d399] mb-2" />
-                          <span className="font-['DM_Mono'] text-[0.65rem] uppercase tracking-widest text-[#84b8a0] block">
+                          <span className="font-['DM_Mono'] text-[0.65rem] uppercase tracking-widest text-[#84b8a0] text-center">
                             Anexar imagem
                           </span>
                         </div>
