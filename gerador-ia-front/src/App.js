@@ -33,7 +33,6 @@ function stripQuotes(text) {
   return t;
 }
 
-// NOVO PARSER PARA LER O TÍTULO, DESCRIÇÃO E O ROTEIRO
 function parseResultadoApi(texto) {
   if (!texto || typeof texto !== "string") return null;
   const t = stripMarkdown(texto);
@@ -106,7 +105,6 @@ function MainPage() {
   const [gerando, setGerando] = useState(false);
   const [toast, setToast] = useState({ show: false, message: "" });
 
-  // NOVO ESTADO PARA CONTROLAR AS ABAS (TABS)
   const [abaAtiva, setAbaAtiva] = useState("copy");
 
   const categorias = ["Camisa", "Calçado", "Bolsa", "Acessório", "Outros"];
@@ -135,7 +133,7 @@ function MainPage() {
     e.preventDefault();
     setGerando(true);
     setItemSelecionado(null);
-    setAbaAtiva("copy"); // Sempre volta pra aba principal ao gerar
+    setAbaAtiva("copy");
 
     const dados = { categoria: categoria === "Outros" ? outraCategoria : categoria, beneficios, material, imagem: imagemBase64 };
 
@@ -147,6 +145,35 @@ function MainPage() {
     } catch {
       setItemSelecionado({ titulo: "Erro", descricao: "Erro ao gerar conteúdo. Verifique sua conexão.", roteiro: null });
     } finally { setGerando(false); }
+  };
+
+  // NOVA FUNÇÃO: AJUSTE FINO MÁGICO
+  const handleAjuste = async (estilo) => {
+    if (!itemSelecionado) return;
+    setGerando(true);
+    setAbaAtiva("copy"); // Volta para a primeira aba para ver o resultado
+
+    const dados = {
+      titulo_atual: itemSelecionado.titulo,
+      descricao_atual: itemSelecionado.descricao,
+      roteiro_atual: itemSelecionado.roteiro || "",
+      estilo: estilo
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/ajustar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dados)
+      });
+      const json = await res.json();
+      const parsed = parseResultadoApi(json.resultado);
+      if (parsed) setItemSelecionado(parsed);
+    } catch {
+      showToast("✦ Erro ao ajustar o texto.");
+    } finally {
+      setGerando(false);
+    }
   };
 
   const salvar = async () => {
@@ -170,7 +197,6 @@ function MainPage() {
 
   const copiarTexto = () => {
     if (!itemSelecionado) return;
-    // Se o usuário clicar em copiar na aba Roteiro, copia só o roteiro.
     const textoFormatado = abaAtiva === "roteiro"
       ? `Roteiro Viral:\n\n${itemSelecionado.roteiro}`
       : `Título: ${itemSelecionado.titulo}\n\nDescrição:\n${itemSelecionado.descricao}`;
@@ -234,9 +260,13 @@ function MainPage() {
                         <button type="button" onClick={() => setImagemBase64(null)} className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white p-1.5 rounded-lg backdrop-blur-md transition-all"><X size={14} /></button>
                       </div>
                     ) : (
-                      <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed border-[rgba(16,185,129,0.2)] bg-[rgba(16,185,129,0.03)] rounded-xl cursor-pointer hover:border-[rgba(16,185,129,0.5)] hover:bg-[rgba(16,185,129,0.08)] transition-all">
-                        <UploadCloud size={24} className="text-[#34d399] mb-2" />
-                        <span className="font-['DM_Mono'] text-[0.65rem] uppercase tracking-widest text-[#84b8a0]">Anexar imagem</span>
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[rgba(16,185,129,0.2)] bg-[rgba(16,185,129,0.03)] rounded-xl cursor-pointer hover:border-[rgba(16,185,129,0.5)] hover:bg-[rgba(16,185,129,0.08)] transition-all text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <UploadCloud size={24} className="text-[#34d399] mb-2" />
+                          <span className="font-['DM_Mono'] text-[0.65rem] uppercase tracking-widest text-[#84b8a0] block">
+                            Anexar imagem
+                          </span>
+                        </div>
                         <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
                       </label>
                     )}
@@ -284,7 +314,7 @@ function MainPage() {
             </div>
           </motion.div>
 
-          {/* CARD 2: Resultado (Agora com Abas) */}
+          {/* CARD 2: Resultado */}
           <motion.div className="card" initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22, duration: 0.55 }}>
             <div className="card-head">
               <div className="card-head-icon icon-lime"><Sparkles size={15} /></div>
@@ -301,14 +331,13 @@ function MainPage() {
                     <div className="h-3 bg-emerald-900/30 rounded w-5/6"></div><div className="h-3 bg-emerald-900/30 rounded w-4/6 mb-4"></div>
                   </motion.div>
                 ) : itemSelecionado ? (
-                  <motion.div key="result" className="result-content" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.32 }}>
+                  <motion.div key="result" className="result-content flex flex-col h-full" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.32 }}>
 
                     {/* NAVEGAÇÃO DAS ABAS */}
                     <div className="tabs-container">
                       <button onClick={() => setAbaAtiva("copy")} className={`tab-btn ${abaAtiva === "copy" ? "active" : ""}`}>
                         <FileText size={15} /> Descrição Site
                       </button>
-                      {/* O botão Roteiro só aparece se a IA gerou um roteiro */}
                       {itemSelecionado.roteiro && (
                         <button onClick={() => setAbaAtiva("roteiro")} className={`tab-btn ${abaAtiva === "roteiro" ? "active" : ""}`}>
                           <Video size={15} /> Roteiro TikTok
@@ -322,17 +351,23 @@ function MainPage() {
 
                     <div className="result-divider" />
 
-                    {/* EXIBE O CONTEÚDO BASEADO NA ABA ESCOLHIDA */}
-                    <p className="result-desc">
+                    <div className="result-desc flex-1">
                       {abaAtiva === "copy" ? (
                         <Typewriter text={itemSelecionado.descricao} delay={10} />
                       ) : (
                         <Typewriter text={itemSelecionado.roteiro} delay={10} />
                       )}
-                    </p>
+                    </div>
+
+                    {/* NOVOS BOTÕES: AJUSTE FINO MÁGICO */}
+                    <div className="flex flex-wrap gap-2 justify-center mb-4 mt-2">
+                      <button onClick={() => handleAjuste("mais curto, direto e objetivo")} className="text-[0.7rem] font-medium px-3 py-1.5 bg-[rgba(16,185,129,0.05)] border border-[rgba(16,185,129,0.2)] rounded-lg hover:border-[#34d399] hover:bg-[rgba(16,185,129,0.1)] transition-all text-[#84b8a0] hover:text-[#34d399]">🤏 Mais Curto</button>
+                      <button onClick={() => handleAjuste("muito mais persuasivo, focado em vendas e escassez")} className="text-[0.7rem] font-medium px-3 py-1.5 bg-[rgba(16,185,129,0.05)] border border-[rgba(16,185,129,0.2)] rounded-lg hover:border-[#34d399] hover:bg-[rgba(16,185,129,0.1)] transition-all text-[#84b8a0] hover:text-[#34d399]">🔥 Mais Vendedor</button>
+                      <button onClick={() => handleAjuste("mais engraçado, divertido e cheio de emojis")} className="text-[0.7rem] font-medium px-3 py-1.5 bg-[rgba(16,185,129,0.05)] border border-[rgba(16,185,129,0.2)] rounded-lg hover:border-[#34d399] hover:bg-[rgba(16,185,129,0.1)] transition-all text-[#84b8a0] hover:text-[#34d399]">😂 Mais Divertido</button>
+                      <button onClick={() => handleAjuste("mais técnico, sério, chique e profissional")} className="text-[0.7rem] font-medium px-3 py-1.5 bg-[rgba(16,185,129,0.05)] border border-[rgba(16,185,129,0.2)] rounded-lg hover:border-[#34d399] hover:bg-[rgba(16,185,129,0.1)] transition-all text-[#84b8a0] hover:text-[#34d399]">👔 Profissional</button>
+                    </div>
 
                     <div className="result-actions">
-                      {/* Desabilita salvar na aba roteiro só pra não confundir o histórico, ou deixa ativo */}
                       <button className="btn-save" onClick={salvar} disabled={abaAtiva === "roteiro"} style={{ opacity: abaAtiva === "roteiro" ? 0.5 : 1 }}>
                         <Save size={14} /> Salvar
                       </button>

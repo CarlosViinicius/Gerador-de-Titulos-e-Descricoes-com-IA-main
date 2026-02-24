@@ -73,6 +73,7 @@ def get_db():
         db.close()
 
 # ----------------- 4. Schemas Pydantic -----------------
+
 class Produto(BaseModel):
     # Todos agora são opcionais, pois o usuário pode mandar só a foto
     categoria: Optional[str] = ""
@@ -93,6 +94,13 @@ class TitleResponse(BaseModel):
 
     class Config:
         from_attributes = True # Compatível com SQLAlchemy
+
+
+class AjusteRequest(BaseModel):
+    titulo_atual: str
+    descricao_atual: str
+    roteiro_atual: Optional[str] = ""
+    estilo: str
 
 # ----------------- 5. Endpoints de CRUD -----------------
 
@@ -187,3 +195,46 @@ def gerar_titulo_descricao(produto: Produto):
     except Exception as e:
         print(f"Erro no backend: {str(e)}") # Útil para debug no terminal
         return {"resultado": f"Erro ao gerar conteúdo: {str(e)}"}
+
+
+@app.post("/ajustar")
+def ajustar_conteudo(req: AjusteRequest):
+    try:
+        # Monta o pedido para a IA reescrever
+        prompt_text = (
+            f"Reescreva o conteúdo abaixo para que ele fique {req.estilo}.\n\n"
+            f"Conteúdo atual:\n"
+            f"Título: {req.titulo_atual}\n"
+            f"Descrição: {req.descricao_atual}\n"
+        )
+        if req.roteiro_atual:
+            prompt_text += f"Roteiro: {req.roteiro_atual}\n"
+
+        prompt_text += (
+            "\nRegras: Mantenha EXATAMENTE a mesma estrutura de resposta. "
+            "Apenas altere o tom e as palavras do texto conforme o pedido.\n"
+            "Formato exigido:\n"
+            "Título: (novo título)\n"
+            "Descrição: (nova descrição)\n"
+        )
+        if req.roteiro_atual:
+            prompt_text += "Roteiro: (novo roteiro)\n"
+
+        # Como é só texto, forçamos o modelo de texto rápido e barato
+        modelo_texto = "gpt-3.5-turbo" if AI_PROVIDER == "OpenAI" else "llama-3.1-8b-instant"
+
+        response = client.chat.completions.create(
+            model=modelo_texto,
+            messages=[
+                {"role": "system", "content": "Você é um Copywriter Especialista em E-commerce."},
+                {"role": "user", "content": prompt_text}
+            ],
+            temperature=0.7
+        )
+
+        resultado = response.choices[0].message.content if response.choices else "Erro na IA"
+        return {"resultado": resultado}
+
+    except Exception as e:
+        print(f"Erro no ajuste: {str(e)}")
+        return {"resultado": f"Erro ao ajustar conteúdo: {str(e)}"}
