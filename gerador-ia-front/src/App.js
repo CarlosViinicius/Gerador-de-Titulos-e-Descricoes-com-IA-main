@@ -9,13 +9,16 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Save, Download, Trash2, Sparkles, Wand2,
-  History, LayoutDashboard, Settings, ChevronRight, Zap,
+  History, LayoutDashboard, Settings, ChevronRight, Zap, Copy
 } from "lucide-react";
 import logo from "./assets/icons/logo-copy.png";
-import "./App.css"; // Aqui importamos o seu arquivo CSS
+import "./App.css"; // Mantém a importação do seu CSS unificado
 
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
+// ==========================================
+// FUNÇÕES AUXILIARES
+// ==========================================
 function stripMarkdown(text) {
   if (!text || typeof text !== "string") return text;
   return text
@@ -43,6 +46,32 @@ function parseResultadoApi(texto) {
   return null;
 }
 
+// ==========================================
+// COMPONENTE: EFEITO DE MÁQUINA DE ESCREVER
+// ==========================================
+const Typewriter = ({ text, delay = 15 }) => {
+  const [displayedText, setDisplayedText] = useState("");
+
+  useEffect(() => {
+    setDisplayedText(""); 
+    let i = 0;
+    const timer = setInterval(() => {
+      if (i < text.length) {
+        setDisplayedText((prev) => prev + text.charAt(i));
+        i++;
+      } else {
+        clearInterval(timer);
+      }
+    }, delay);
+    return () => clearInterval(timer);
+  }, [text, delay]);
+
+  return <span>{displayedText}</span>;
+};
+
+// ==========================================
+// ROTAS PRINCIPAIS
+// ==========================================
 function App() {
   return (
     <Router>
@@ -56,12 +85,16 @@ function App() {
   );
 }
 
+// ==========================================
+// PÁGINA PRINCIPAL
+// ==========================================
 function MainPage() {
   const [userId] = useState(() => {
     let id = localStorage.getItem("user_session_id");
     if (!id) { id = "user_" + Math.random().toString(36).substring(2, 11); localStorage.setItem("user_session_id", id); }
     return id;
   });
+  
   const [categoria, setCategoria] = useState("");
   const [outraCategoria, setOutraCategoria] = useState("");
   const [material, setMaterial] = useState("");
@@ -70,7 +103,9 @@ function MainPage() {
   const [itemSelecionado, setItemSelecionado] = useState(null);
   const [historico, setHistorico] = useState([]);
   const [gerando, setGerando] = useState(false);
-  const [toast, setToast] = useState(false);
+  
+  // Controle do Toast unificado
+  const [toast, setToast] = useState({ show: false, message: "" });
 
   const categorias = ["Camisa", "Calçado", "Bolsa", "Acessório", "Outros"];
   const tons = ["Informal", "Profissional", "Divertido", "Elegante"];
@@ -80,9 +115,16 @@ function MainPage() {
       .then(r => r.json()).then(d => setHistorico(d)).catch(() => {});
   }, [userId]);
 
+  const showToast = (message) => {
+    setToast({ show: true, message });
+    setTimeout(() => setToast({ show: false, message: "" }), 2500);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setGerando(true);
+    setItemSelecionado(null); // Limpa o resultado anterior para mostrar o Skeleton
+    
     const dados = { categoria: categoria === "Outros" ? outraCategoria : categoria, beneficios, material };
     try {
       const res = await fetch(`${API_BASE}/gerar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
@@ -90,8 +132,10 @@ function MainPage() {
       const parsed = parseResultadoApi(json.resultado);
       setItemSelecionado(parsed || { titulo: "Gerado com IA", descricao: stripMarkdown(json.resultado) });
     } catch {
-      setItemSelecionado({ titulo: "Erro", descricao: "Erro ao gerar conteúdo." });
-    } finally { setGerando(false); }
+      setItemSelecionado({ titulo: "Erro", descricao: "Erro ao gerar conteúdo. Tente novamente." });
+    } finally { 
+      setGerando(false); 
+    }
   };
 
   const salvar = async () => {
@@ -100,7 +144,7 @@ function MainPage() {
       const res = await fetch(`${API_BASE}/titles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ titulo: itemSelecionado.titulo, descricao: itemSelecionado.descricao, user_id: userId }) });
       const saved = await res.json();
       setHistorico(prev => [saved, ...prev]);
-      setToast(true); setTimeout(() => setToast(false), 2200);
+      showToast("✦ Salvo no histórico");
     } catch {}
   };
 
@@ -112,12 +156,20 @@ function MainPage() {
     URL.revokeObjectURL(url);
   };
 
+  const copiarTexto = () => {
+    if (!itemSelecionado) return;
+    const textoFormatado = `Título: ${itemSelecionado.titulo}\n\nDescrição:\n${itemSelecionado.descricao}`;
+    navigator.clipboard.writeText(textoFormatado);
+    showToast("✦ Texto copiado!");
+  };
+
   const deletar = async (id) => {
     try { await fetch(`${API_BASE}/titles/${id}`, { method: "DELETE" }); setHistorico(prev => prev.filter(i => i.id !== id)); } catch {}
   };
 
   return (
     <div>
+      {/* Background Effects */}
       <div className="bg-fx">
         <div className="bg-orb bg-orb-1" />
         <div className="bg-orb bg-orb-2" />
@@ -128,6 +180,7 @@ function MainPage() {
       <div className="bg-vignette" />
 
       <div className="page-content">
+        {/* Header */}
         <header className="header">
           <div className="header-inner">
             <Link to="/" className="logo-mark">
@@ -144,6 +197,7 @@ function MainPage() {
           </div>
         </header>
 
+        {/* Hero Section */}
         <motion.section className="hero"
           initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
@@ -171,10 +225,10 @@ function MainPage() {
           <div className="hero-stat"><div className="hero-stat-num">∞</div><div className="hero-stat-label">Gerações ilimitadas</div></div>
         </motion.div>
 
-        {/* ── THREE EQUAL CARDS ── */}
+        {/* ── GRID PRINCIPAL ── */}
         <div className="main-grid">
 
-          {/* Parâmetros */}
+          {/* CARD 1: Parâmetros */}
           <motion.div className="card"
             initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.14, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
@@ -189,23 +243,23 @@ function MainPage() {
                 <div className="field">
                   <label>Categoria</label>
                   <div className="select-wrap">
-                    <select value={categoria} onChange={e => setCategoria(e.target.value)}>
+                    <select value={categoria} onChange={e => setCategoria(e.target.value)} required>
                       <option value="">Selecione a categoria</option>
                       {categorias.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </div>
                   {categoria === "Outros" && (
-                    <input type="text" placeholder="Digite a nova categoria" value={outraCategoria} onChange={e => setOutraCategoria(e.target.value)} style={{ marginTop: 8 }} />
+                    <input type="text" placeholder="Digite a nova categoria" value={outraCategoria} onChange={e => setOutraCategoria(e.target.value)} style={{ marginTop: 8 }} required />
                   )}
                 </div>
                 <div className="field">
                   <label>Material</label>
-                  <input placeholder="Ex: algodão, couro, nylon…" value={material} onChange={e => setMaterial(e.target.value)} />
+                  <input placeholder="Ex: algodão, couro, nylon…" value={material} onChange={e => setMaterial(e.target.value)} required />
                 </div>
                 <div className="field">
                   <label>Tom de voz</label>
                   <div className="select-wrap">
-                    <select value={tom} onChange={e => setTom(e.target.value)}>
+                    <select value={tom} onChange={e => setTom(e.target.value)} required>
                       <option value="">Selecione o tom</option>
                       {tons.map(t => <option key={t}>{t}</option>)}
                     </select>
@@ -213,7 +267,7 @@ function MainPage() {
                 </div>
                 <div className="field" style={{ flex:1 }}>
                   <label>Benefícios do produto</label>
-                  <textarea rows={4} placeholder="Ex: confortável, durável, respirável…" value={beneficios} onChange={e => setBeneficios(e.target.value)} style={{ height:"100%", minHeight:96 }} />
+                  <textarea rows={4} placeholder="Ex: confortável, durável, respirável…" value={beneficios} onChange={e => setBeneficios(e.target.value)} style={{ height:"100%", minHeight:96 }} required />
                 </div>
                 <button type="submit" className="btn-primary" disabled={gerando}>
                   {gerando ? <><div className="spinner" /> Gerando…</> : <><Sparkles size={14} /> Gerar com IA</>}
@@ -222,7 +276,7 @@ function MainPage() {
             </div>
           </motion.div>
 
-          {/* Resultado */}
+          {/* CARD 2: Resultado (com Skeleton Loader e Typewriter) */}
           <motion.div className="card"
             initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.22, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
@@ -234,20 +288,42 @@ function MainPage() {
             </div>
             <div className="card-body">
               <AnimatePresence mode="wait">
-                {itemSelecionado ? (
+                {gerando ? (
+                  /* --- SKELETON LOADER --- */
+                  <motion.div key="loading" className="flex flex-col flex-1 gap-3 p-2 animate-pulse"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  >
+                    <div className="h-8 bg-emerald-900/40 rounded-lg w-3/4 mx-auto mb-4"></div>
+                    <div className="h-1 bg-emerald-500/30 rounded w-10 mx-auto mb-6"></div>
+                    <div className="h-3 bg-emerald-900/30 rounded w-full"></div>
+                    <div className="h-3 bg-emerald-900/30 rounded w-full"></div>
+                    <div className="h-3 bg-emerald-900/30 rounded w-5/6"></div>
+                    <div className="h-3 bg-emerald-900/30 rounded w-4/6 mb-4"></div>
+                    <div className="h-3 bg-emerald-900/30 rounded w-full"></div>
+                    <div className="h-3 bg-emerald-900/30 rounded w-3/4"></div>
+                  </motion.div>
+                ) : itemSelecionado ? (
+                  /* --- RESULTADO GERADO --- */
                   <motion.div key="result" className="result-content"
                     initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.32 }}
                   >
                     <h2 className="result-titulo">{itemSelecionado.titulo}</h2>
                     <div className="result-divider" />
-                    <p className="result-desc">{itemSelecionado.descricao}</p>
+                    
+                    {/* Efeito Typewriter na descrição */}
+                    <p className="result-desc">
+                      <Typewriter text={itemSelecionado.descricao} delay={10} />
+                    </p>
+                    
                     <div className="result-actions">
-                      <button className="btn-save" onClick={salvar}><Save size={13} /> Salvar</button>
-                      <button className="btn-export" onClick={exportar}><Download size={13} /> Exportar</button>
+                      <button className="btn-save" onClick={salvar}><Save size={14} /> Salvar</button>
+                      <button className="btn-export" onClick={copiarTexto}><Copy size={14} /> Copiar</button>
+                      <button className="btn-export" onClick={exportar}><Download size={14} /> Exportar</button>
                     </div>
                   </motion.div>
                 ) : (
+                  /* --- ESTADO VAZIO --- */
                   <motion.div key="empty" className="result-empty"
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   >
@@ -259,7 +335,7 @@ function MainPage() {
             </div>
           </motion.div>
 
-          {/* Histórico */}
+          {/* CARD 3: Histórico */}
           <motion.div className="card"
             initial={{ opacity: 0, y: 28 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.30, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
@@ -305,12 +381,13 @@ function MainPage() {
         </footer>
       </div>
 
+      {/* Notificações (Toasts) */}
       <AnimatePresence>
-        {toast && (
+        {toast.show && (
           <motion.div className="toast"
             initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 14 }}
           >
-            ✦ Salvo no histórico
+            {toast.message}
           </motion.div>
         )}
       </AnimatePresence>
@@ -318,6 +395,9 @@ function MainPage() {
   );
 }
 
+// ==========================================
+// PÁGINA: EM BREVE
+// ==========================================
 function ComingSoon() {
   const navigate = useNavigate();
   return (
