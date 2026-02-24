@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional # NOVO IMPORT AQUI
+from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -46,7 +46,7 @@ else:
 
 print(f"[IA] Provedor: {AI_PROVIDER} | Modelo Padrão: {AI_MODEL}")
 
-# ----------------- 3. SQLAlchemy / SQLite (Ajustado) -----------------
+# ----------------- 3. SQLAlchemy / SQLite -----------------
 # O banco fica no /tmp para funcionar na Vercel
 SQLALCHEMY_DATABASE_URL = "sqlite:////tmp/db.sqlite3"
 engine = create_engine(
@@ -78,7 +78,7 @@ class Produto(BaseModel):
     categoria: Optional[str] = ""
     beneficios: Optional[str] = ""
     material: Optional[str] = ""
-    imagem: Optional[str] = None # NOVO: Campo para receber a imagem em base64
+    imagem: Optional[str] = None # Campo para receber a imagem em base64
 
 class TitleCreate(BaseModel):
     titulo: str
@@ -154,14 +154,12 @@ def gerar_titulo_descricao(produto: Produto):
                 }
             ]
             
-            # --- AUTO-TROCA PARA MODELO DE VISÃO ---
-            # Modelos normais (como gpt-3.5 ou llama 3.1 8b) dão erro com imagens. 
-            # Se for Groq ou OpenAI, forçamos um modelo que suporta visão.
+            # --- CORREÇÃO DO MODELO DE VISÃO ---
             if AI_PROVIDER == "Groq":
-                current_model = "llama-3.2-11b-vision-preview"
+                # Utiliza o modelo de visão mais recente recomendado pela Groq (Llama 4 Scout)
+                current_model = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
             elif AI_PROVIDER == "OpenAI":
                 current_model = "gpt-4o-mini"
-            # Se for Ollama, assumimos que o modelo padrão (ex: llava ou llama3.2-vision) já suporta.
             
             print(f"📸 Imagem recebida! Usando modelo de visão: {current_model}")
             
@@ -169,7 +167,6 @@ def gerar_titulo_descricao(produto: Produto):
             # Se não tem imagem, envia só a string normal
             user_content = prompt_text
             print(f"📝 Apenas texto recebido. Usando modelo: {current_model}")
-
 
         # Faz a chamada para a IA
         response = client.chat.completions.create(
